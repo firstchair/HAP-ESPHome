@@ -420,7 +420,7 @@ void LockEntity::setup() {
   if (!ptrToLock->is_internal())
 #if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 4, 0)
     ptrToLock->add_on_state_callback(
-        [this](LockState /* state */) { LockEntity::on_lock_update(ptrToLock); });
+        [this](lock::LockState /* state */) { LockEntity::on_lock_update(ptrToLock); });
 #else
     ptrToLock->add_on_state_callback(
         [this]() { LockEntity::on_lock_update(ptrToLock); });
