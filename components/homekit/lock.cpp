@@ -7,13 +7,6 @@
 namespace esphome {
 namespace homekit {
 
-// HK-HomeKit-Lib verplaatste hk_utils naar priv/ (niet meer publiek) en hernoemde
-// het naar red_log. Alleen bufToHexString + getHashIdentifier werden hier gebruikt,
-// dus die staan nu lokaal -- geen afhankelijkheid van library-interne headers.
-// getHashIdentifier is 1-op-1 overgenomen uit de oude utils.cpp: de uitkomst
-// identificeert opgeslagen issuers in NVS en MOET identiek blijven.
-// De LOG()-macro kwam vroeger mee via het publieke hk-utils.h; die header is nu
-// privé. Zelfde vorm als het origineel, zodat de logregels niet veranderen.
 #ifndef LOG
 #define LOG(x, format, ...) \
   ESP_LOG##x(TAG, "%s > " format, __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
@@ -173,8 +166,6 @@ void LockEntity::hap_event_handler(hap_event_t event, void *data) {
 #endif
 
 void LockEntity::on_lock_update(lock::Lock *obj) {
-  // lock_state_to_string geeft een LogString*, geen char*: zonder LOG_STR_ARG
-  // krijgt printf het verkeerde type (compiler-warning + undefined behavior).
   ESP_LOGD("on_lock_update", "%s state: %s", obj->get_name().c_str(),
            LOG_STR_ARG(lock_state_to_string(obj->state)));
   hap_acc_t *acc = hap_acc_get_by_aid(
@@ -348,8 +339,6 @@ void LockEntity::set_nfc_ctx(pn532::PN532 *ctx) {
   auto automation_id_3 = new Automation<std::string, nfc::NfcTag>(trigger);
   auto lambdaaction_id_3 = new LambdaAction<std::string, nfc::NfcTag>(
       [this, ctx](std::string x, nfc::NfcTag tag) -> void {
-        // HK-HomeKit-Lib esp-idf-branch gebruikt sinds "replace in/out buf ptr
-        // args for nfc delegate with std::vector" vectoren i.p.v. rauwe buffers.
         std::function<bool(std::vector<uint8_t> &, std::vector<uint8_t> &, bool)>
             lambda = [=](std::vector<uint8_t> &send, std::vector<uint8_t> &recv,
                          bool ignoreLog) -> bool {
@@ -357,7 +346,7 @@ void LockEntity::set_nfc_ctx(pn532::PN532 *ctx) {
           if (data.empty()) {
             return false;
           }
-          data.erase(data.begin());  // eerste byte is de PN532-status
+          data.erase(data.begin());
           ESP_LOGD(TAG, "%s", format_hex_pretty(data).c_str());
           recv = std::move(data);
           return true;
