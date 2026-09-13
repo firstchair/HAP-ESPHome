@@ -173,8 +173,10 @@ void LockEntity::hap_event_handler(hap_event_t event, void *data) {
 #endif
 
 void LockEntity::on_lock_update(lock::Lock *obj) {
+  // lock_state_to_string geeft een LogString*, geen char*: zonder LOG_STR_ARG
+  // krijgt printf het verkeerde type (compiler-warning + undefined behavior).
   ESP_LOGD("on_lock_update", "%s state: %s", obj->get_name().c_str(),
-           lock_state_to_string(obj->state));
+           LOG_STR_ARG(lock_state_to_string(obj->state)));
   hap_acc_t *acc = hap_acc_get_by_aid(
       hap_get_unique_aid(std::to_string(obj->get_object_id_hash()).c_str()));
   hap_serv_t *hs = hap_acc_get_serv_by_uuid(acc, HAP_SERV_UUID_LOCK_MECHANISM);
