@@ -312,16 +312,18 @@ void LockEntity::set_nfc_ctx(pn532::PN532 *ctx) {
   auto automation_id_3 = new Automation<std::string, nfc::NfcTag>(trigger);
   auto lambdaaction_id_3 = new LambdaAction<std::string, nfc::NfcTag>(
       [this, ctx](std::string x, nfc::NfcTag tag) -> void {
-        std::function<bool(uint8_t *, uint8_t, uint8_t *, uint16_t *, bool)>
-            lambda = [=](uint8_t *send, uint8_t sendLen, uint8_t *res,
-                         uint16_t *resLen, bool ignoreLog) -> bool {
-          auto data =
-              ctx->inDataExchange(std::vector<uint8_t>(send, send + sendLen));
-          data.erase(data.begin());
+        // HK-HomeKit-Lib esp-idf-branch gebruikt sinds "replace in/out buf ptr
+        // args for nfc delegate with std::vector" vectoren i.p.v. rauwe buffers.
+        std::function<bool(std::vector<uint8_t> &, std::vector<uint8_t> &, bool)>
+            lambda = [=](std::vector<uint8_t> &send, std::vector<uint8_t> &recv,
+                         bool ignoreLog) -> bool {
+          auto data = ctx->inDataExchange(send);
+          if (data.empty()) {
+            return false;
+          }
+          data.erase(data.begin());  // eerste byte is de PN532-status
           ESP_LOGD(TAG, "%s", format_hex_pretty(data).c_str());
-          memcpy(res, data.data(), data.size());
-          uint16_t t = data.size();
-          memcpy(resLen, &t, sizeof(uint16_t));
+          recv = std::move(data);
           return true;
         };
         auto versions =
