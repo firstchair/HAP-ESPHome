@@ -362,8 +362,16 @@ std::vector<uint8_t> PN532::inDataExchange(const std::vector<uint8_t>& data) {
       return std::vector<uint8_t>();
     }
   }
+  // HomeKey taps intermittently failed with "Error getting response" on a
+  // PN532 over SPI: the card was detected, but the APDU exchange gave up
+  // while the tag was still answering. 250 ms is tight for the SELECT that
+  // opens a HomeKey session -- a successful one measures ~450 ms end to end,
+  // and a slow first exchange overruns the budget. Falling back early makes
+  // the phone look like an unknown tag. 750 ms costs nothing on the happy
+  // path (the loop exits as soon as the chip is READY) and only lengthens
+  // the wait when the exchange was going to fail anyway.
   int timeout = 0;
-  while (this->read_ready_(true) != pn532::PN532ReadReady::READY) { timeout++; delay(1); if (timeout > 250) break; }
+  while (this->read_ready_(true) != pn532::PN532ReadReady::READY) { timeout++; delay(1); if (timeout > 750) break; }
 
   std::vector<uint8_t> buffer(0);
   if (!this->read_response(PN532_COMMAND_INDATAEXCHANGE, buffer)) {
