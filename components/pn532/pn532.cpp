@@ -126,6 +126,51 @@ bool PN532::powerdown() {
   return true;
 }
 
+bool PN532::reinit_() {
+  ESP_LOGW(TAG, "Reader stopped responding, reinitialising");
+
+  std::vector<uint8_t> resp;
+
+  if (!this->write_command_({PN532_COMMAND_VERSION_DATA}) ||
+      !this->read_response(PN532_COMMAND_VERSION_DATA, resp)) {
+    ESP_LOGW(TAG, "Reinit: no version response, will retry");
+    return false;
+  }
+  ESP_LOGI(TAG, "Reinit: found chip PN5%02X, firmware v%d.%d", resp[0], resp[1], resp[2]);
+
+  uint8_t sam_timeout = std::min<uint8_t>(255u, this->update_interval_ / 50);
+  resp.clear();
+  if (!this->write_command_({
+          PN532_COMMAND_SAMCONFIGURATION,
+          0x01,         // normal mode
+          sam_timeout,  // timeout as multiple of 50ms
+          0x01,         // enable IRQ
+      }) ||
+      !this->read_response(PN532_COMMAND_SAMCONFIGURATION, resp)) {
+    ESP_LOGW(TAG, "Reinit: SAM configuration failed, will retry");
+    return false;
+  }
+
+  resp.clear();
+  if (!this->write_command_({
+          PN532_COMMAND_RFCONFIGURATION,
+          0x05,
+          0xFF,
+          0x01,
+          0x0,
+      }) ||
+      !this->read_response(PN532_COMMAND_RFCONFIGURATION, resp)) {
+    ESP_LOGW(TAG, "Reinit: RF configuration failed, will retry");
+    return false;
+  }
+
+  ESP_LOGI(TAG, "Reinit: reader is back");
+  this->next_flow_ = 0;
+  this->requested_ecp_ = false;
+  this->status_clear_warning();
+  return true;
+}
+
 void PN532::update() {
   if (!updates_enabled_)
     return;
@@ -144,8 +189,16 @@ void PN532::update() {
         })) {
         ESP_LOGW(TAG, "Setting 8bit TX failed!");
         this->status_set_warning();
+        // Repeated failures here mean the reader has wedged. Rather than
+        // warning forever until someone reboots the ESP, reconfigure it.
+        if (++this->consecutive_failures_ >= FAILURES_BEFORE_REINIT) {
+          if (this->reinit_()) {
+            this->consecutive_failures_ = 0;
+          }
+        }
         return;
       }
+      this->consecutive_failures_ = 0;
       this->status_clear_warning();
       this->requested_ecp_ = true;
       return;

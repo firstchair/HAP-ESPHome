@@ -63,6 +63,16 @@ class PN532 : public PollingComponent {
   bool powerdown();
 
  protected:
+  // The PN532 can stop answering after a period of inactivity: commands keep
+  // failing ("Setting 8bit TX failed!") and the component never recovers on its
+  // own, so NFC stays dead until the ESP is restarted. reinit_() re-runs the
+  // chip configuration in place -- the same sequence setup() performs, minus
+  // mark_failed() -- so a wedged reader comes back without a reboot.
+  // Ported from rednblkx/HomeKey-ESP32 PR #159 (PN532 auto-reconnect).
+  bool reinit_();
+  uint8_t consecutive_failures_{0};
+  static const uint8_t FAILURES_BEFORE_REINIT = 3;
+
   void turn_off_rf_();
   bool write_command_(const std::vector<uint8_t> &data);
   bool read_ack_();
