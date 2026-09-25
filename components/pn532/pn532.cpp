@@ -245,9 +245,21 @@ void PN532::loop() {
       success = this->read_response(PN532_COMMAND_WRITEREGISTER, read);
       ESP_LOGV(TAG, "ECP: %s", format_hex(read).c_str());
       this->next_flow_ = 1;
+      this->ecp_stalls_ = 0;
     }
     else {
+      // Not ready: next_flow_ stays at 0, so update() retries this same step
+      // and never reaches the tag poll below it. If that repeats the reader is
+      // effectively dead while looking perfectly healthy -- no command fails,
+      // and the timeout itself is only logged at VERBOSE. Count the stalls and
+      // reconfigure the chip once it is clearly stuck.
       this->send_ack_();
+      if (++this->ecp_stalls_ >= STALLS_BEFORE_REINIT) {
+        ESP_LOGW(TAG, "ECP polling stalled %u times, reader is not responding", this->ecp_stalls_);
+        if (this->reinit_()) {
+          this->ecp_stalls_ = 0;
+        }
+      }
     }
     this->requested_ecp_ = false;
     return;
@@ -263,9 +275,16 @@ void PN532::loop() {
       success = this->read_response(PN532_COMMAND_INCOMMUNICATETHRU, read);
       ESP_LOGV(TAG, "ECP: %s", format_hex(read).c_str());
       this->next_flow_ = 2;
+      this->ecp_stalls_ = 0;
     }
     else {
       this->send_ack_();
+      if (++this->ecp_stalls_ >= STALLS_BEFORE_REINIT) {
+        ESP_LOGW(TAG, "ECP polling stalled %u times, reader is not responding", this->ecp_stalls_);
+        if (this->reinit_()) {
+          this->ecp_stalls_ = 0;
+        }
+      }
     }
     this->requested_ecp_ = false;
     return;

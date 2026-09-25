@@ -73,6 +73,13 @@ class PN532 : public PollingComponent {
   uint8_t consecutive_failures_{0};
   static const uint8_t FAILURES_BEFORE_REINIT = 3;
 
+  // The ECP sequence advances next_flow_ only when the chip reports READY. On a
+  // timeout it stays put, so update() repeats the same step forever and never
+  // reaches the tag poll that sits after it -- NFC goes silent with no error
+  // anywhere. ~20 stalls is a few seconds of a genuinely unresponsive reader.
+  uint16_t ecp_stalls_{0};
+  static const uint16_t STALLS_BEFORE_REINIT = 20;
+
   void turn_off_rf_();
   bool write_command_(const std::vector<uint8_t> &data);
   bool read_ack_();
