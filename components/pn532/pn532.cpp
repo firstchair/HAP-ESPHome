@@ -107,7 +107,10 @@ void PN532::setup() {
 bool PN532::powerdown() {
   updates_enabled_ = false;
   requested_read_ = false;
-  ESP_LOGI(TAG, "Powering down PN532");
+  this->updates_disabled_at_ = millis();
+  // WARN, not INFO: this single call ends all tag polling until the next boot,
+  // so it must never again be something we only find out about afterwards.
+  ESP_LOGW(TAG, "Powering down PN532 -- tag polling stops here");
   if (!this->write_command_({PN532_COMMAND_POWERDOWN, 0b10100000})) {  // enable i2c,spi wakeup
     ESP_LOGE(TAG, "Error writing powerdown command to PN532");
     return false;
@@ -172,8 +175,36 @@ bool PN532::reinit_() {
 }
 
 void PN532::update() {
-  if (!updates_enabled_)
+  if (!updates_enabled_) {
+    const uint32_t now = millis();
+    // powerdown() runs microseconds before a reboot as part of the shutdown
+    // hooks; that case is legitimate and the reboot resets the flag anyway.
+    if (now - this->updates_disabled_at_ < DISABLED_GRACE_MS)
+      return;
+
+    if (now - this->last_disabled_warn_ >= DISABLED_WARN_MS) {
+      this->last_disabled_warn_ = now;
+      ESP_LOGW(TAG, "Tag polling is switched off: reader was powered down %u s ago and never woken",
+               (now - this->updates_disabled_at_) / 1000);
+    }
+    // The reader accepted a powerdown with SPI wakeup enabled, but nothing ever
+    // sends it another command, so it can never wake by itself. Do it here.
+    if (this->reinit_()) {
+      this->updates_enabled_ = true;
+      ESP_LOGW(TAG, "Tag polling switched back on after powerdown");
+    }
     return;
+  }
+
+  this->polls_++;
+  const uint32_t now = millis();
+  if (now - this->last_heartbeat_ >= HEARTBEAT_MS) {
+    // Positive proof that polling really is running, so that silence in the log
+    // becomes evidence instead of an open question.
+    ESP_LOGI(TAG, "Tag polling alive: %u polls in %u s", this->polls_, (now - this->last_heartbeat_) / 1000);
+    this->last_heartbeat_ = now;
+    this->polls_ = 0;
+  }
 
   for (auto *obj : this->binary_sensors_)
     obj->on_scan_end();

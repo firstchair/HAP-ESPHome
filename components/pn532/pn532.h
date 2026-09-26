@@ -118,7 +118,20 @@ class PN532 : public PollingComponent {
 
   std::vector<uint8_t> ecp_frame;
 
+  // powerdown() clears updates_enabled_ and nothing ever sets it back, so a
+  // single powerdown silently retires the reader for the rest of the uptime.
+  // These track when that happened so update() can say so and recover.
   bool updates_enabled_{ true };
+  uint32_t updates_disabled_at_{ 0 };
+  uint32_t last_disabled_warn_{ 0 };
+  static const uint32_t DISABLED_GRACE_MS = 5000;   // a powerdown just before a reboot is legitimate
+  static const uint32_t DISABLED_WARN_MS = 10000;
+
+  // A healthy idle reader and a dead one are both completely silent, which is
+  // what made this so hard to see. Count polls and report them periodically.
+  uint32_t polls_{ 0 };
+  uint32_t last_heartbeat_{ 0 };
+  static const uint32_t HEARTBEAT_MS = 60000;
   bool requested_read_{ false };
   bool target_still_present{ false };
   bool requested_ecp_{ false };
