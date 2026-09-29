@@ -170,6 +170,8 @@ bool PN532::reinit_() {
   ESP_LOGI(TAG, "Reinit: reader is back");
   this->next_flow_ = 0;
   this->requested_ecp_ = false;
+  this->requested_read_ = false;
+  this->read_requested_at_ = 0;
   this->status_clear_warning();
   return true;
 }
@@ -201,9 +203,15 @@ void PN532::update() {
   if (now - this->last_heartbeat_ >= HEARTBEAT_MS) {
     // Positive proof that polling really is running, so that silence in the log
     // becomes evidence instead of an open question.
-    ESP_LOGI(TAG, "Tag polling alive: %u polls in %u s", this->polls_, (now - this->last_heartbeat_) / 1000);
+    // Count answers too: polls alone only prove update() runs, which stays true
+    // while the reader has stopped responding entirely.
+    ESP_LOGI(TAG, "Tag polling: %u polls, %u answered in %u s", this->polls_, this->reads_ok_,
+             (now - this->last_heartbeat_) / 1000);
+    if (this->polls_ > 4 && this->reads_ok_ == 0)
+      ESP_LOGW(TAG, "Reader answered none of the last %u polls", this->polls_);
     this->last_heartbeat_ = now;
     this->polls_ = 0;
+    this->reads_ok_ = 0;
   }
 
   for (auto *obj : this->binary_sensors_)
@@ -249,6 +257,17 @@ void PN532::update() {
   }
   // End of ECP sequence
 
+  // A read that never became ready leaves loop() returning on WOULDBLOCK and
+  // next_flow_ pinned at 2, so the reader is dead while update() keeps happily
+  // issuing polls. Give that state the recovery the ECP path already has.
+  if (this->requested_read_ && this->read_requested_at_ != 0 &&
+      millis() - this->read_requested_at_ > READ_STALL_MS) {
+    ESP_LOGW(TAG, "Tag read outstanding for %u ms without an answer, reader is wedged",
+             millis() - this->read_requested_at_);
+    if (this->reinit_())
+      return;
+  }
+
   if (!this->write_command_({
           PN532_COMMAND_INLISTPASSIVETARGET,
           0x01,  // max 1 card
@@ -259,6 +278,8 @@ void PN532::update() {
     return;
   }
   this->status_clear_warning();
+  if (!this->requested_read_)
+    this->read_requested_at_ = millis();
   this->requested_read_ = true;
 }
 
@@ -333,11 +354,13 @@ void PN532::loop() {
 
   if (ready == READY) {
     success = this->read_response(PN532_COMMAND_INLISTPASSIVETARGET, read);
+    this->reads_ok_++;
   } else {
     this->send_ack_();  // abort still running InListPassiveTarget
   }
 
   this->requested_read_ = false;
+  this->read_requested_at_ = 0;
 
   if (!success) {
     // Something failed

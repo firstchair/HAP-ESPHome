@@ -130,8 +130,17 @@ class PN532 : public PollingComponent {
   // A healthy idle reader and a dead one are both completely silent, which is
   // what made this so hard to see. Count polls and report them periodically.
   uint32_t polls_{ 0 };
+  uint32_t reads_ok_{ 0 };
   uint32_t last_heartbeat_{ 0 };
   static const uint32_t HEARTBEAT_MS = 60000;
+
+  // A tag read that is requested but never becomes ready parks loop() on its
+  // WOULDBLOCK return forever: requested_read_ stays set, next_flow_ stays at
+  // 2, and the ECP branches -- the only ones with a stall counter -- are never
+  // reached again. Nothing fails, so nothing is logged. Time the outstanding
+  // read instead of counting loop passes, which are legitimately WOULDBLOCK.
+  uint32_t read_requested_at_{ 0 };
+  static const uint32_t READ_STALL_MS = 5000;
   bool requested_read_{ false };
   bool target_still_present{ false };
   bool requested_ecp_{ false };
