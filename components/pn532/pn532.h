@@ -62,6 +62,11 @@ class PN532 : public PollingComponent {
   void write_mode(nfc::NdefMessage *message);
   bool powerdown();
 
+  // Exposed so the YAML can surface reader health to Home Assistant: the
+  // failure is invisible from the outside otherwise -- polling continues and
+  // nothing errors while the reader answers nothing.
+  bool reader_answering() const { return this->reader_healthy_; }
+
  protected:
   // The PN532 can stop answering after a period of inactivity: commands keep
   // failing ("Setting 8bit TX failed!") and the component never recovers on its
@@ -141,6 +146,17 @@ class PN532 : public PollingComponent {
   // read instead of counting loop passes, which are legitimately WOULDBLOCK.
   uint32_t read_requested_at_{ 0 };
   static const uint32_t READ_STALL_MS = 5000;
+
+  // The real failure, measured on 11 Oct: read_ready_() returns TIMEOUT (not
+  // WOULDBLOCK) for every tag poll. That path acks, clears requested_read_ and
+  // resets next_flow_, so it retries forever and the earlier READ_STALL_MS
+  // guard -- which waits for an outstanding read -- can never trigger. Count
+  // the unanswered polls themselves.
+  uint16_t read_timeouts_{ 0 };
+  static const uint16_t TIMEOUTS_BEFORE_REINIT = 20;   // ~10 s at a 500 ms interval
+  uint8_t failed_reinits_{ 0 };
+  static const uint8_t REINITS_BEFORE_UNHEALTHY = 3;   // ~30 s of a reader that answers nothing
+  bool reader_healthy_{ true };
   bool requested_read_{ false };
   bool target_still_present{ false };
   bool requested_ecp_{ false };

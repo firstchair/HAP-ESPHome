@@ -355,8 +355,31 @@ void PN532::loop() {
   if (ready == READY) {
     success = this->read_response(PN532_COMMAND_INLISTPASSIVETARGET, read);
     this->reads_ok_++;
+    this->read_timeouts_ = 0;
+    this->failed_reinits_ = 0;
+    if (!this->reader_healthy_) {
+      this->reader_healthy_ = true;
+      ESP_LOGW(TAG, "Reader is answering tag polls again");
+    }
   } else {
     this->send_ack_();  // abort still running InListPassiveTarget
+    // This branch is the whole failure. It tidies up after itself and retries
+    // on the next interval, so a reader that answers no tag poll at all looks
+    // exactly like an idle one: polling continues, nothing fails, nothing is
+    // logged. Count the unanswered polls and act on them.
+    if (++this->read_timeouts_ >= TIMEOUTS_BEFORE_REINIT) {
+      this->read_timeouts_ = 0;
+      ESP_LOGW(TAG, "Reader answered none of the last %u tag polls, reinitialising",
+               TIMEOUTS_BEFORE_REINIT);
+      this->reinit_();
+      if (++this->failed_reinits_ >= REINITS_BEFORE_UNHEALTHY) {
+        this->failed_reinits_ = 0;
+        if (this->reader_healthy_) {
+          this->reader_healthy_ = false;
+          ESP_LOGE(TAG, "Reader stays dead across reinitialisations; reporting it as unhealthy");
+        }
+      }
+    }
   }
 
   this->requested_read_ = false;
