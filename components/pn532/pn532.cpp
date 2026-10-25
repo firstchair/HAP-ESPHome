@@ -1,5 +1,7 @@
 #include "pn532.h"
 
+#include <cinttypes>
+
 #include <memory>
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
@@ -203,7 +205,7 @@ void PN532::update() {
 
     if (now - this->last_disabled_warn_ >= DISABLED_WARN_MS) {
       this->last_disabled_warn_ = now;
-      ESP_LOGW(TAG, "Tag polling is switched off: reader was powered down %u s ago and never woken",
+      ESP_LOGW(TAG, "Tag polling is switched off: reader was powered down %" PRIu32 " s ago and never woken",
                (now - this->updates_disabled_at_) / 1000);
     }
     // The reader accepted a powerdown with SPI wakeup enabled, but nothing ever
@@ -226,10 +228,10 @@ void PN532::update() {
     // a register read in between would eat that frame.
     if (!this->requested_read_ && !this->requested_ecp_)
       this->read_rf_field_();
-    ESP_LOGI(TAG, "Tag polling: %u polls, %u answered in %u s, RF field %s", this->polls_, this->reads_ok_,
+    ESP_LOGI(TAG, "Tag polling: %" PRIu32 " polls, %" PRIu32 " answered in %" PRIu32 " s, RF field %s", this->polls_, this->reads_ok_,
              (now - this->last_heartbeat_) / 1000, this->rf_field_on_ ? "on" : "OFF");
     if (this->polls_ > 4 && this->reads_ok_ == 0)
-      ESP_LOGW(TAG, "Reader answered none of the last %u polls", this->polls_);
+      ESP_LOGW(TAG, "Reader answered none of the last %" PRIu32 " polls", this->polls_);
     this->last_heartbeat_ = now;
     this->polls_ = 0;
     this->reads_ok_ = 0;
@@ -283,7 +285,7 @@ void PN532::update() {
   // issuing polls. Give that state the recovery the ECP path already has.
   if (this->requested_read_ && this->read_requested_at_ != 0 &&
       millis() - this->read_requested_at_ > READ_STALL_MS) {
-    ESP_LOGW(TAG, "Tag read outstanding for %u ms without an answer, reader is wedged",
+    ESP_LOGW(TAG, "Tag read outstanding for %" PRIu32 " ms without an answer, reader is wedged",
              millis() - this->read_requested_at_);
     if (this->reinit_())
       return;

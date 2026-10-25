@@ -1,4 +1,5 @@
 #include <esphome/core/defines.h>
+#include <esphome/core/version.h>
 #ifdef USE_LOCK
 #include "lock.h"
 #include <mbedtls/sha1.h>
@@ -348,9 +349,19 @@ void LockEntity::set_nfc_ctx(pn532::PN532 *ctx) {
   nfc_ctx = ctx;
   auto trigger = new nfc::NfcOnTagTrigger();
   ctx->register_ontag_trigger(trigger);
-  auto automation_id_3 = new Automation<std::string, nfc::NfcTag>(trigger);
-  auto lambdaaction_id_3 = new LambdaAction<std::string, nfc::NfcTag>(
-      [this, ctx](std::string x, nfc::NfcTag tag) -> void {
+  // ESPHome 2026.10 changed NfcOnTagTrigger from Trigger<std::string, NfcTag>
+  // to Trigger<std::string, const NfcTag &> (the tag is no longer copied per
+  // trigger). The Automation and LambdaAction must use the same parameter pack
+  // or the constructor does not match; follow the core version here so the
+  // component builds on both sides of that change.
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 10, 0)
+  using NfcTagArg = const nfc::NfcTag &;
+#else
+  using NfcTagArg = nfc::NfcTag;
+#endif
+  auto automation_id_3 = new Automation<std::string, NfcTagArg>(trigger);
+  auto lambdaaction_id_3 = new LambdaAction<std::string, NfcTagArg>(
+      [this, ctx](std::string x, NfcTagArg tag) -> void {
         // HK-HomeKit-Lib esp-idf-branch gebruikt sinds "replace in/out buf ptr
         // args for nfc delegate with std::vector" vectoren i.p.v. rauwe buffers.
         std::function<bool(std::vector<uint8_t> &, std::vector<uint8_t> &, bool)>
