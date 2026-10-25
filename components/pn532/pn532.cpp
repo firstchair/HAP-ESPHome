@@ -129,6 +129,23 @@ bool PN532::powerdown() {
   return true;
 }
 
+bool PN532::read_rf_field_() {
+  // CIU_TxControl (0x6302): bit 0 = Tx1RFEn, bit 1 = Tx2RFEn. Both clear means
+  // the antenna drivers are off and no tag can answer, however healthy the SPI
+  // side looks. Logged at INFO every heartbeat so a healthy baseline exists to
+  // compare the failed state against.
+  std::vector<uint8_t> resp;
+  if (!this->write_command_({PN532_COMMAND_READREGISTER, 0x63, 0x02}) ||
+      !this->read_response(PN532_COMMAND_READREGISTER, resp) || resp.empty()) {
+    ESP_LOGW(TAG, "Could not read CIU_TxControl");
+    return false;
+  }
+  this->rf_field_on_ = (resp[0] & 0x03) != 0;
+  if (!this->rf_field_on_)
+    ESP_LOGW(TAG, "CIU_TxControl=0x%02X: RF field is OFF, the reader is not radiating", resp[0]);
+  return true;
+}
+
 bool PN532::reinit_() {
   ESP_LOGW(TAG, "Reader stopped responding, reinitialising");
 
@@ -205,8 +222,12 @@ void PN532::update() {
     // becomes evidence instead of an open question.
     // Count answers too: polls alone only prove update() runs, which stays true
     // while the reader has stopped responding entirely.
-    ESP_LOGI(TAG, "Tag polling: %u polls, %u answered in %u s", this->polls_, this->reads_ok_,
-             (now - this->last_heartbeat_) / 1000);
+    // Only touch the bus when no poll or ECP step is waiting for its answer;
+    // a register read in between would eat that frame.
+    if (!this->requested_read_ && !this->requested_ecp_)
+      this->read_rf_field_();
+    ESP_LOGI(TAG, "Tag polling: %u polls, %u answered in %u s, RF field %s", this->polls_, this->reads_ok_,
+             (now - this->last_heartbeat_) / 1000, this->rf_field_on_ ? "on" : "OFF");
     if (this->polls_ > 4 && this->reads_ok_ == 0)
       ESP_LOGW(TAG, "Reader answered none of the last %u polls", this->polls_);
     this->last_heartbeat_ = now;

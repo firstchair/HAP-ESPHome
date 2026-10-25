@@ -18,6 +18,7 @@ static const uint8_t PN532_COMMAND_SAMCONFIGURATION = 0x14;
 static const uint8_t PN532_COMMAND_RFCONFIGURATION = 0x32;
 static const uint8_t PN532_COMMAND_INDATAEXCHANGE = 0x40;
 static const uint8_t PN532_COMMAND_INCOMMUNICATETHRU = 0x42;
+static const uint8_t PN532_COMMAND_READREGISTER = 0x06;
 static const uint8_t PN532_COMMAND_WRITEREGISTER = 0x08;
 static const uint8_t PN532_COMMAND_INLISTPASSIVETARGET = 0x4A;
 static const uint8_t PN532_COMMAND_POWERDOWN = 0x16;
@@ -66,6 +67,15 @@ class PN532 : public PollingComponent {
   // failure is invisible from the outside otherwise -- polling continues and
   // nothing errors while the reader answers nothing.
   bool reader_answering() const { return this->reader_healthy_; }
+
+  // The failure the health flag cannot see: the chip answers every poll but
+  // never reports a tag. Whether the reader is actually radiating is read
+  // straight from the CIU once a minute, so Home Assistant can tell "field
+  // off" from "nobody at the door". reinit() lets that be tried from a button
+  // without a reboot, which is the experiment that decides whether this is
+  // fixable in software at all.
+  bool rf_field_on() const { return this->rf_field_on_; }
+  bool reinit() { return this->reinit_(); }
 
  protected:
   // The PN532 can stop answering after a period of inactivity: commands keep
@@ -157,6 +167,8 @@ class PN532 : public PollingComponent {
   uint8_t failed_reinits_{ 0 };
   static const uint8_t REINITS_BEFORE_UNHEALTHY = 3;   // ~30 s of a reader that answers nothing
   bool reader_healthy_{ true };
+  bool rf_field_on_{ true };
+  bool read_rf_field_();
   bool requested_read_{ false };
   bool target_still_present{ false };
   bool requested_ecp_{ false };
