@@ -2,6 +2,12 @@ from esphome import automation
 import esphome.codegen as cg
 from esphome.components import nfc
 import esphome.config_validation as cv
+
+# ESPHome 2026.10 passes the tag to on_tag/on_tag_removed as a const reference
+# (nfc.NfcTagConstRef) instead of by value; the generated Automation must use
+# the same type as NfcOnTagTrigger or main.cpp fails to compile. Fall back to
+# the by-value type on older cores so this component builds on both.
+NFC_TAG_ARG = getattr(nfc, "NfcTagConstRef", nfc.NfcTag)
 from esphome.const import (
     CONF_ID,
     CONF_ON_FINISHED_WRITE,
@@ -63,14 +69,14 @@ async def setup_pn532(var, config):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
         cg.add(var.register_ontag_trigger(trigger))
         await automation.build_automation(
-            trigger, [(cg.std_string, "x"), (nfc.NfcTag, "tag")], conf
+            trigger, [(cg.std_string, "x"), (NFC_TAG_ARG, "tag")], conf
         )
 
     for conf in config.get(CONF_ON_TAG_REMOVED, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
         cg.add(var.register_ontagremoved_trigger(trigger))
         await automation.build_automation(
-            trigger, [(cg.std_string, "x"), (nfc.NfcTag, "tag")], conf
+            trigger, [(cg.std_string, "x"), (NFC_TAG_ARG, "tag")], conf
         )
 
     await automation.build_callback_automations(var, config, _CALLBACK_AUTOMATIONS)
