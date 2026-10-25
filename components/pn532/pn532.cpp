@@ -143,8 +143,18 @@ bool PN532::read_rf_field_() {
     return false;
   }
   this->rf_field_on_ = (resp[0] & 0x03) != 0;
-  if (!this->rf_field_on_)
-    ESP_LOGW(TAG, "CIU_TxControl=0x%02X: RF field is OFF, the reader is not radiating", resp[0]);
+  // Measured 2026-10-25 on a healthy, freshly booted reader: 0x00 between polls.
+  // The PN532 drops the field once InListPassiveTarget times out, so a readback
+  // outside a poll says nothing about health. Keep the raw value visible, add
+  // GetGeneralStatus (Err, Field, NbTg) as a second candidate discriminator,
+  // and do not treat 0x00 as a fault.
+  std::vector<uint8_t> st;
+  if (this->write_command_({PN532_COMMAND_GETGENERALSTATUS}) &&
+      this->read_response(PN532_COMMAND_GETGENERALSTATUS, st) && st.size() >= 3) {
+    ESP_LOGI(TAG, "CIU_TxControl=0x%02X  GeneralStatus Err=0x%02X Field=%u NbTg=%u", resp[0], st[0], st[1], st[2]);
+  } else {
+    ESP_LOGI(TAG, "CIU_TxControl=0x%02X  (GeneralStatus unavailable)", resp[0]);
+  }
   return true;
 }
 
