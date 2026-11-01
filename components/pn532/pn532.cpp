@@ -373,7 +373,16 @@ void PN532::loop() {
     // on the next interval, so a reader that answers no tag poll at all looks
     // exactly like an idle one: polling continues, nothing fails, nothing is
     // logged. Count the unanswered polls and act on them.
-    if (++this->read_timeouts_ >= TIMEOUTS_BEFORE_REINIT) {
+    //
+    // Unless the ESP itself was late. The readiness window is 100 ms, and the
+    // fingerprint sensor stalls the main loop for ~850 ms while it processes
+    // an image (measured 2026-11-01 16:33: loop_time 849 ms, then a reinit).
+    // A poll that was simply never serviced in time says nothing about the
+    // reader, so it does not count towards reinitialising it.
+    const uint32_t waited = this->read_requested_at_ ? millis() - this->read_requested_at_ : 0;
+    if (waited > LATE_LOOP_MS) {
+      ESP_LOGD(TAG, "Poll unanswered after %" PRIu32 " ms, but the loop was late; not counting it", waited);
+    } else if (++this->read_timeouts_ >= TIMEOUTS_BEFORE_REINIT) {
       this->read_timeouts_ = 0;
       ESP_LOGW(TAG, "Reader answered none of the last %u tag polls, reinitialising",
                TIMEOUTS_BEFORE_REINIT);

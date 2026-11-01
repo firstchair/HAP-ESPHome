@@ -161,6 +161,7 @@ class PN532 : public PollingComponent {
   // the unanswered polls themselves.
   uint16_t read_timeouts_{ 0 };
   static const uint16_t TIMEOUTS_BEFORE_REINIT = 20;   // ~10 s at a 500 ms interval
+  static const uint32_t LATE_LOOP_MS = 400;             // a poll left waiting this long was the ESP's fault, not the reader's
   uint8_t failed_reinits_{ 0 };
   static const uint8_t REINITS_BEFORE_UNHEALTHY = 3;   // ~30 s of a reader that answers nothing
   bool reader_healthy_{ true };
