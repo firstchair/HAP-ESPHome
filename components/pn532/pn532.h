@@ -69,13 +69,9 @@ class PN532 : public PollingComponent {
   // nothing errors while the reader answers nothing.
   bool reader_answering() const { return this->reader_healthy_; }
 
-  // The failure the health flag cannot see: the chip answers every poll but
-  // never reports a tag. Whether the reader is actually radiating is read
-  // straight from the CIU once a minute, so Home Assistant can tell "field
-  // off" from "nobody at the door". reinit() lets that be tried from a button
-  // without a reboot, which is the experiment that decides whether this is
-  // fixable in software at all.
-  bool rf_field_on() const { return this->rf_field_on_; }
+  // reinit() lets a reinitialisation be tried from a button without a reboot:
+  // the experiment that decides whether the "answers but never sees a tag"
+  // failure is fixable in software at all.
   bool reinit() { return this->reinit_(); }
 
  protected:
@@ -168,8 +164,6 @@ class PN532 : public PollingComponent {
   uint8_t failed_reinits_{ 0 };
   static const uint8_t REINITS_BEFORE_UNHEALTHY = 3;   // ~30 s of a reader that answers nothing
   bool reader_healthy_{ true };
-  bool rf_field_on_{ true };
-  bool read_rf_field_();
   bool requested_read_{ false };
   bool target_still_present{ false };
   bool requested_ecp_{ false };

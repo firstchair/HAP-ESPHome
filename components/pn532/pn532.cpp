@@ -131,33 +131,6 @@ bool PN532::powerdown() {
   return true;
 }
 
-bool PN532::read_rf_field_() {
-  // CIU_TxControl (0x6302): bit 0 = Tx1RFEn, bit 1 = Tx2RFEn. Both clear means
-  // the antenna drivers are off and no tag can answer, however healthy the SPI
-  // side looks. Logged at INFO every heartbeat so a healthy baseline exists to
-  // compare the failed state against.
-  std::vector<uint8_t> resp;
-  if (!this->write_command_({PN532_COMMAND_READREGISTER, 0x63, 0x02}) ||
-      !this->read_response(PN532_COMMAND_READREGISTER, resp) || resp.empty()) {
-    ESP_LOGW(TAG, "Could not read CIU_TxControl");
-    return false;
-  }
-  this->rf_field_on_ = (resp[0] & 0x03) != 0;
-  // Measured 2026-10-25 on a healthy, freshly booted reader: 0x00 between polls.
-  // The PN532 drops the field once InListPassiveTarget times out, so a readback
-  // outside a poll says nothing about health. Keep the raw value visible, add
-  // GetGeneralStatus (Err, Field, NbTg) as a second candidate discriminator,
-  // and do not treat 0x00 as a fault.
-  std::vector<uint8_t> st;
-  if (this->write_command_({PN532_COMMAND_GETGENERALSTATUS}) &&
-      this->read_response(PN532_COMMAND_GETGENERALSTATUS, st) && st.size() >= 3) {
-    ESP_LOGI(TAG, "CIU_TxControl=0x%02X  GeneralStatus Err=0x%02X Field=%u NbTg=%u", resp[0], st[0], st[1], st[2]);
-  } else {
-    ESP_LOGI(TAG, "CIU_TxControl=0x%02X  (GeneralStatus unavailable)", resp[0]);
-  }
-  return true;
-}
-
 bool PN532::reinit_() {
   ESP_LOGW(TAG, "Reader stopped responding, reinitialising");
 
@@ -234,12 +207,12 @@ void PN532::update() {
     // becomes evidence instead of an open question.
     // Count answers too: polls alone only prove update() runs, which stays true
     // while the reader has stopped responding entirely.
-    // Only touch the bus when no poll or ECP step is waiting for its answer;
-    // a register read in between would eat that frame.
-    if (!this->requested_read_ && !this->requested_ecp_)
-      this->read_rf_field_();
-    ESP_LOGI(TAG, "Tag polling: %" PRIu32 " polls, %" PRIu32 " answered in %" PRIu32 " s, RF field %s", this->polls_, this->reads_ok_,
-             (now - this->last_heartbeat_) / 1000, this->rf_field_on_ ? "on" : "OFF");
+    // No bus traffic from the heartbeat. The register/status readbacks that
+    // lived here (25 Oct) coincided with the first safe-mode fallback this
+    // device ever had (31 Oct 02:04); until that is understood the heartbeat
+    // only counts.
+    ESP_LOGI(TAG, "Tag polling: %" PRIu32 " polls, %" PRIu32 " answered in %" PRIu32 " s", this->polls_, this->reads_ok_,
+             (now - this->last_heartbeat_) / 1000);
     if (this->polls_ > 4 && this->reads_ok_ == 0)
       ESP_LOGW(TAG, "Reader answered none of the last %" PRIu32 " polls", this->polls_);
     this->last_heartbeat_ = now;
