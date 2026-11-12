@@ -74,6 +74,13 @@ class PN532 : public PollingComponent {
   // failure is fixable in software at all.
   bool reinit() { return this->reinit_(); }
 
+  // Counters for Home Assistant, so the recorder keeps a history of what the
+  // reader did between visits: how often it was reinitialised and how many
+  // tags it actually saw. Without these, every failure report so far has had
+  // to be reconstructed from a laptop log that was not running at the time.
+  uint32_t reinit_count() const { return this->reinit_count_; }
+  uint32_t tags_seen() const { return this->tags_seen_; }
+
  protected:
   // The PN532 can stop answering after a period of inactivity: commands keep
   // failing ("Setting 8bit TX failed!") and the component never recovers on its
@@ -165,6 +172,8 @@ class PN532 : public PollingComponent {
   uint8_t failed_reinits_{ 0 };
   static const uint8_t REINITS_BEFORE_UNHEALTHY = 3;   // ~30 s of a reader that answers nothing
   bool reader_healthy_{ true };
+  uint32_t reinit_count_{ 0 };
+  uint32_t tags_seen_{ 0 };
   bool requested_read_{ false };
   bool target_still_present{ false };
   bool requested_ecp_{ false };

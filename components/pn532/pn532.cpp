@@ -133,6 +133,7 @@ bool PN532::powerdown() {
 
 bool PN532::reinit_() {
   ESP_LOGW(TAG, "Reader stopped responding, reinitialising");
+  this->reinit_count_++;
 
   std::vector<uint8_t> resp;
 
@@ -442,6 +443,7 @@ void PN532::loop() {
     return;
   }
   nfc::NfcTagUid nfcid(read.begin() + 6, read.begin() + 6 + nfcid_length);
+  this->tags_seen_++;
 
   bool report = true;
   for (auto *bin_sens : this->binary_sensors_) {
